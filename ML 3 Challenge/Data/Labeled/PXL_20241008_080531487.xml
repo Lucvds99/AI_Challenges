@@ -1,0 +1,26 @@
+<annotation>
+	<folder>Challenge</folder>
+	<filename>PXL_20241008_080531487.jpg</filename>
+	<path>C:\Users\yario\OneDrive - Hogeschool Rotterdam\Jaar 4\Minor\ML3\Challenge\PXL_20241008_080531487.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>3472</width>
+		<height>4624</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>mok</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>690</xmin>
+			<ymin>970</ymin>
+			<xmax>3215</xmax>
+			<ymax>3245</ymax>
+		</bndbox>
+	</object>
+</annotation>

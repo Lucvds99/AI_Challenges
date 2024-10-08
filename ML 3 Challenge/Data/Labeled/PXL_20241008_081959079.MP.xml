@@ -1,0 +1,26 @@
+<annotation>
+	<folder>Challenge</folder>
+	<filename>PXL_20241008_081959079.MP.jpg</filename>
+	<path>C:\Users\yario\OneDrive - Hogeschool Rotterdam\Jaar 4\Minor\ML3\Challenge\PXL_20241008_081959079.MP.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>3472</width>
+		<height>4624</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>laptop</name>
+		<pose>Unspecified</pose>
+		<truncated>1</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>581</xmin>
+			<ymin>625</ymin>
+			<xmax>3472</xmax>
+			<ymax>3553</ymax>
+		</bndbox>
+	</object>
+</annotation>

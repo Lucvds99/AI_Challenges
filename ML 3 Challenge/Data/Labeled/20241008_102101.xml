@@ -1,0 +1,26 @@
+<annotation>
+	<folder>Challenge</folder>
+	<filename>20241008_102101.jpg</filename>
+	<path>C:\Users\yario\OneDrive - Hogeschool Rotterdam\Jaar 4\Minor\ML3\Challenge\20241008_102101.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>4000</width>
+		<height>3000</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>laptop</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>619</xmin>
+			<ymin>354</ymin>
+			<xmax>3072</xmax>
+			<ymax>2585</ymax>
+		</bndbox>
+	</object>
+</annotation>

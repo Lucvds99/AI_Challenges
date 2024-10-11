@@ -1,0 +1,15 @@
+# Example usage: python train.py --data laptops_and_mugs.yaml
+# parent
+# ├── yolov5
+# └── datasets
+#     └── coco128  ← downloads here (7 MB)
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: ./datasets/laptops_and_mugs # dataset root dir
+train: images # train images (relative to 'path')
+val: images # val images (relative to 'path')
+
+# Classes
+names:
+  0: laptop
+  1: mug

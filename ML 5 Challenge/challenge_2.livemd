@@ -1,0 +1,275 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# ML5-Challenge2: YouTube/Podcast Transcription
+
+```elixir
+Mix.install(
+  [
+    {:req, "~> 0.5.7"},
+    {:fast_rss, "~> 0.5.0"},
+    {:bumblebee, "~> 0.6.0"},
+    {:exla, "> 0.0.0"},
+    {:kino, "~> 0.14.2"},
+    {:kino_bumblebee, "~> 0.5.1"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## Setup
+
+```elixir
+required_dependencies = ["ffmpeg", "yt-dlp"]
+
+Enum.map(required_dependencies, fn dep ->
+  if System.find_executable(dep) == nil, do: raise("#{dep} is a required dependency")
+end)
+
+:ok
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## Obtain Media
+
+```elixir
+defmodule MediaDownloader do
+  defmodule Strategy do
+    @callback fetch_item(source :: any()) :: any()
+    @callback download_item(item :: map(), download_directory :: String.t()) :: map()
+  end
+
+  defmodule Youtube do
+    @behaviour MediaDownloader.Strategy
+
+    def fetch_item(video_url) do
+      %{url: video_url}
+    end
+
+    def download_item(item, download_directory) do
+      video_id =
+        URI.parse(item.url).query
+        |> String.split("&")
+        |> Enum.find(fn param -> String.starts_with?(param, "v=") end)
+        |> String.split("=")
+        |> List.last()
+
+      audio_format = "mp3"
+      filename = "#{video_id}.#{audio_format}"
+      out_path = Path.join(download_directory, filename)
+
+      System.cmd("yt-dlp", ["-x", "--audio-format", audio_format, "-o", out_path, item.url])
+
+      Map.put(item, :local_path, out_path)
+    end
+  end
+
+  defmodule Podcast do
+    @behaviour MediaDownloader.Strategy
+
+    def fetch_item(feed_url, title \\ nil) do
+      %{body: rss_body} = Req.get!(feed_url)
+      {:ok, rss_feed} = FastRSS.parse_rss(rss_body)
+
+      episode =
+        if title do
+          Enum.find(rss_feed["items"], fn item -> item["title"] == title end)
+        else
+          # If no title specified, take the latest episode
+          List.first(rss_feed["items"])
+        end
+
+      %{
+        title: episode["title"],
+        url: episode["enclosure"]["url"]
+      }
+    end
+
+    def download_item(item, download_directory) do
+      id =
+        item.url
+        |> URI.parse()
+        |> Map.fetch!(:path)
+        |> Path.basename()
+
+      filename = "#{item.title}-#{id}" |> String.replace(" ", "_")
+
+      out_path = Path.join(download_directory, filename)
+
+      Req.get!(url: item.url, into: File.stream!(out_path))
+
+      Map.put(item, :local_path, out_path)
+    end
+  end
+
+  def download_media(strategy, source, title \\ nil) do
+    download_directory = Path.join(System.tmp_dir!(), "media-downloads")
+    File.mkdir_p!(download_directory)
+
+    item =
+      if strategy == Podcast do
+        strategy.fetch_item(source, title)
+      else
+        strategy.fetch_item(source)
+      end
+
+    strategy.download_item(item, download_directory)
+  end
+end
+
+# media =
+#   MediaDownloader.download_media(
+#     MediaDownloader.Podcast,
+#     "https://feeds.megaphone.fm/GLT1412515089"
+#   )
+#   |> dbg()
+
+media =
+  MediaDownloader.download_media(
+    MediaDownloader.Youtube,
+    "https://www.youtube.com/watch?v=eekrsC1Do2E"
+  )
+  |> dbg()
+
+:ok
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{
+  local_path: "/tmp/nix-shell-234583-0/media-downloads/eekrsC1Do2E.mp3",
+  url: "https://www.youtube.com/watch?v=eekrsC1Do2E"
+}
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## Transcribe
+
+On a Ryzen 7 5700U, only `tiny` can keep up with the live playback of the audio.
+
+```elixir
+{:ok, whisper} = Bumblebee.load_model({:hf, "openai/whisper-tiny.en"})
+{:ok, featurizer} = Bumblebee.load_featurizer({:hf, "openai/whisper-tiny.en"})
+{:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, "openai/whisper-tiny.en"})
+{:ok, generation_config} = Bumblebee.load_generation_config({:hf, "openai/whisper-tiny.en"})
+
+serving =
+  Bumblebee.Audio.speech_to_text_whisper(whisper, featurizer, tokenizer, generation_config,
+    defn_options: [compiler: EXLA],
+    chunk_num_seconds: 30,
+    timestamps: :segments,
+    # needed for monolingual models
+    task: nil,
+    stream: true
+  )
+
+Kino.start_child!({Nx.Serving, name: Whisper, serving: serving})
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+#PID<0.356.0>
+```
+
+```elixir
+start_time = DateTime.utc_now()
+
+frame = Kino.Frame.new()
+Kino.render(frame)
+
+Kino.Frame.append(frame, Kino.Markdown.new("(Start of transcription)\n", chunk: true))
+
+transcription_output =
+  for chunk <- Nx.Serving.batched_run(Whisper, {:file, media.local_path}) do
+    [start_mark, end_mark] =
+      for seconds <- [chunk.start_timestamp_seconds, chunk.end_timestamp_seconds] do
+        seconds |> round() |> Time.from_seconds_after_midnight() |> Time.to_string()
+      end
+
+    text = "\n- `#{start_mark}-#{end_mark}`: #{chunk.text}"
+    Kino.Frame.append(frame, Kino.Markdown.new(text, chunk: true))
+
+    chunk
+  end
+
+Kino.Frame.append(frame, Kino.Markdown.new("\n\n(End of transcription)", chunk: true))
+
+end_time = DateTime.utc_now()
+
+media = Map.merge(media, %{
+  transcription: transcription_output,
+  transcription_processing_seconds: DateTime.diff(end_time, start_time)
+})
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+%{
+  local_path: "/tmp/nix-shell-234583-0/media-downloads/eekrsC1Do2E.mp3",
+  transcription: [
+    %{
+      end_timestamp_seconds: 7.0,
+      start_timestamp_seconds: 0.0,
+      text: " I've been answering my email all the goddamn day"
+    },
+    %{
+      end_timestamp_seconds: 15.0,
+      start_timestamp_seconds: 7.0,
+      text: " I've been answering my email because my work gets done that way"
+    },
+    %{
+      end_timestamp_seconds: 22.0,
+      start_timestamp_seconds: 15.0,
+      text: " Can't you feel the fingers a-can type into early in the morning"
+    },
+    %{
+      end_timestamp_seconds: 29.0,
+      start_timestamp_seconds: 22.0,
+      text: " Can't you see the letters bler-in is just an-a-ed for porn"
+    }
+  ],
+  transcription_processing_seconds: 33,
+  url: "https://www.youtube.com/watch?v=eekrsC1Do2E"
+}
+```
+
+```elixir
+calculate_transcription_speed_ratio = fn media ->
+  audio_length =
+    media.transcription
+    |> Enum.map(fn chunk -> chunk.end_timestamp_seconds end)
+    |> Enum.max()
+
+  audio_length / media.transcription_processing_seconds
+end
+
+chunk_to_markdown = fn chunk ->
+  "- `#{chunk.start_timestamp_seconds |> floor()}s`: #{chunk.text}"
+end
+
+episode_to_markdown = fn media ->
+  speed_ratio = Float.round(calculate_transcription_speed_ratio.(media), 2)
+
+  """
+  Transcribed by Whisper at #{speed_ratio}x speed.
+
+  ## Transcript
+
+  #{Enum.map(media.transcription, &chunk_to_markdown.(&1)) |> Enum.join("\n")}
+  """
+end
+
+Kino.Markdown.new(episode_to_markdown.(media))
+```
